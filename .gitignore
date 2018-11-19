@@ -1,0 +1,10 @@
+.idea
+.idea/
+.idea/*
+*.iml
+bin/
+gen/
+build/
+*.log
+__pycache__/
+.DS_Store
