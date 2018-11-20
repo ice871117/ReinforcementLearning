@@ -10,8 +10,7 @@ from Common import *
 def update_env(episode, totalStep, pos):
     env_list = ['-'] * (TOTAL_STATES - 1) + ['T']
     if pos == TOTAL_STATES - 1:
-        text = "This is episode %d, step %d " % (episode, totalStep)
-        print('\r{}'.format(text), end='')
+        print('\rThis is episode {}, step {} '.format(episode, totalStep), end='')
         time.sleep(2)
         print("\r                                   ", end='')
     else:
