@@ -1,4 +1,13 @@
 <resources>
     <string name="app_name">TicTacToe</string>
     <string name="restart">"Restart"</string>
+    <string name="train">"Train"</string>
+    <string name="win">"You Win!"</string>
+    <string name="lose">"You Lose~ Try again!"</string>
+    <string name="draw">"Draw"</string>
+    <string name="ok">"OK"</string>
+    <string name="stop_train">"Stop Train"</string>
+    <string name="save">"Save QTable"</string>
+    <string name="saved">"Model save success"</string>
+    <string name="loaded">"Model load success"</string>
 </resources>
