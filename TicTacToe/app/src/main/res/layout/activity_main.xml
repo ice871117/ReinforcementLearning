@@ -56,4 +56,26 @@
         app:layout_constraintTop_toBottomOf="@+id/recycler_view"
         />
 
+    <TextView
+        android:id="@+id/progress_desc"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/epsilon"
+        android:layout_marginLeft="10dp"
+        android:layout_marginTop="5dp"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/restart_btn"
+        />
+
+    <SeekBar
+        android:id="@+id/epsilon_progress"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:max="100"
+        android:progress="90"
+        android:layout_marginTop="5dp"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/progress_desc"/>
+
 </android.support.constraint.ConstraintLayout>

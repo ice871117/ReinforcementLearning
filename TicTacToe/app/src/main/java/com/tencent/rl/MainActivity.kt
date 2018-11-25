@@ -8,6 +8,8 @@ import android.support.v7.widget.RecyclerView
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.SeekBar
+import android.widget.TextView
 import com.tencent.rl.core.Action
 import com.tencent.rl.core.ChessPieceState
 import com.tencent.rl.core.Common
@@ -70,11 +72,31 @@ class MainActivity : AppCompatActivity() {
             EnvironmentCtrl.saveQTable(Common.SAVE_PATH)
         }
 
+        val progressText = findViewById<TextView>(R.id.progress_desc)
+
+        progressText.text = getEpsilonDesc((Common.EPSILON * 100).toInt())
+        findViewById<SeekBar>(R.id.epsilon_progress).apply { progress = (Common.EPSILON * 100).toInt() }.setOnSeekBarChangeListener(object: SeekBar.OnSeekBarChangeListener {
+
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                progressText.text = getEpsilonDesc(progress)
+                Common.EPSILON = progress.toFloat() / 100f
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {
+            }
+
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {
+            }
+
+        })
+
         val recyclerView = findViewById<RecyclerView>(R.id.recycler_view)
         recyclerView.layoutManager = GridLayoutManager(this@MainActivity, COLUMNS)
         recyclerView.addItemDecoration(BorderDecoration(this@MainActivity))
         recyclerView.adapter = adapter
     }
+
+    private fun getEpsilonDesc(progress: Int) = String.format("%s %d %%", getString(R.string.epsilon),  progress)
 
     private fun initEnv() {
         Common.SAVE_PATH = externalCacheDir.absolutePath + File.separator + "model.rl"

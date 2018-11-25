@@ -16,7 +16,7 @@ enum class ChessPieceState(val value: Int) {
 object Common {
     const val SIZE = 3
     const val BOARD_TOTAL_SIZE = SIZE * SIZE
-    const val EPSILON = 0.9f                   // 贪婪度 greedy
+    var EPSILON = 0.9f                   // 贪婪度 greedy
     const val ALPHA = 0.1f                     // 学习率
     const val GAMMA = 0.9f                     // 奖励递减值
     val HUMAN = ChessPieceState.CROSS

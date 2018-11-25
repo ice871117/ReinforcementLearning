@@ -23,7 +23,7 @@ abstract class BaseTicTacToeEngine: IRLEngine {
         if (WinDetector.hasWon(nextState!!, Common.AI)) {
             reward = 1f
         } else if (WinDetector.oneMoreStepToWin(nextState!!, Common.HUMAN)) {
-            reward = -0.3f
+            reward = -1f
         }
         Log.d(Common.TAG, "AI ===> action=$action, reward=$reward")
         return Pair(nextState!!, reward)
