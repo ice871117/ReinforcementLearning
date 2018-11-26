@@ -20,9 +20,15 @@ object EnvironmentCtrl {
     @Volatile
     private var qTable = QTable()
     private var currBoardState = BoardState(Common.SIZE)
-    private var engine = QLearningTicTacToeEngine()
+    private var engine: IRLEngine = QLearningTicTacToeEngine()
     private val threadPool = Executors.newFixedThreadPool(1)
     var updateListener: ((index: Int) -> Unit)? = null
+    private var lastStateForSarsa: SarsaTicTacToeEngine.LastLerningState? = null
+
+    fun changeEngine(newEngine: IRLEngine) {
+        engine = newEngine
+        Toast.makeText(MyApplication.GlobalContext, "Change Engine to ${newEngine.javaClass.simpleName}", Toast.LENGTH_SHORT).show()
+    }
 
     fun updateByHuman(action: Action): GameResult {
         Log.v(Common.TAG, "HUMAN ===> action=$action")
@@ -30,7 +36,10 @@ object EnvironmentCtrl {
         if (tempState != null) {
             currBoardState = tempState
             return when {
-                currBoardState.getWinner() == Common.HUMAN -> GameResult.RESULT_HUMAN_WIN
+                currBoardState.getWinner() == Common.HUMAN ->  {
+                    learnForSarsa(null)
+                    GameResult.RESULT_HUMAN_WIN
+                }
                 currBoardState.isFull() -> GameResult.RESULT_DRAW
                 else -> updateByAI()
             }
@@ -41,8 +50,12 @@ object EnvironmentCtrl {
 
     private fun updateByAI(): GameResult {
         val action = engine.chooseAction(qTable, currBoardState)
+        learnForSarsa(action)
         val feedback = engine.getFeedBack(currBoardState, action)
-        engine.doLearning(qTable, currBoardState, action, feedback.first, feedback.second)
+        // remember as last state
+        lastStateForSarsa = SarsaTicTacToeEngine.LastLerningState(currBoardState, action, feedback.first, feedback.second)
+        // for qlearning or sarsa when AI win
+        engine.doLearning(qTable, currBoardState, action, feedback.first, feedback.second, null)
         currBoardState = feedback.first
         updateListener?.invoke(action.index)
         return when {
@@ -52,9 +65,18 @@ object EnvironmentCtrl {
         }
     }
 
+    private fun learnForSarsa(action: Action?) {
+        if (engine is SarsaTicTacToeEngine) {
+            lastStateForSarsa?.apply {
+                engine.doLearning(qTable, currState, currAction, nextState, reward, action)
+            }
+        }
+    }
+
     fun reset() {
         Log.w(Common.TAG, "Game reset!")
         currBoardState = BoardState(Common.SIZE)
+        lastStateForSarsa = null
     }
 
     fun saveQTable(path: String?) {

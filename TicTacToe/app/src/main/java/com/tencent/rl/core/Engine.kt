@@ -11,7 +11,7 @@ interface IRLEngine {
 
     fun chooseAction(table: QTable, currState: BoardState): Action
 
-    fun doLearning(table: QTable, currState: BoardState, action: Action, nextState: BoardState, reward: Float)
+    fun doLearning(table: QTable, currState: BoardState, action: Action, nextState: BoardState, reward: Float, nextAction: Action? = null)
 
 }
 
@@ -44,7 +44,10 @@ class QLearningTicTacToeEngine: BaseTicTacToeEngine() {
 
     override fun getEpsilon() = Common.EPSILON
 
-    override fun doLearning(table: QTable, currState: BoardState, action: Action, nextState: BoardState, reward: Float) {
+    /**
+     * nextAction is never used by QLearning
+     */
+    override fun doLearning(table: QTable, currState: BoardState, action: Action, nextState: BoardState, reward: Float, nextAction: Action?) {
         val qPredict = table.getTable(currState)[action.index]
         val qTarget = if (nextState.isFull() || nextState.getWinner() != null) {
             reward
@@ -60,8 +63,22 @@ class SarsaTicTacToeEngine: BaseTicTacToeEngine() {
 
     override fun getEpsilon() = Common.EPSILON
 
-    override fun doLearning(table: QTable, currState: BoardState, action: Action, nextState: BoardState, reward: Float) {
-        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+    /**
+     * nextAction will be taken into account if provided in Sarsa
+     */
+    override fun doLearning(table: QTable, currState: BoardState, action: Action, nextState: BoardState, reward: Float, nextAction: Action?) {
+        val qPredict = table.getTable(currState)[action.index]
+        val qTarget = if (nextState.isFull() || nextState.getWinner() != null) {
+            reward
+        } else if (nextAction != null) {
+            reward + Common.GAMMA * table.getTable(nextState)[nextAction.index]
+        } else {
+            // nextAction is null while game has not been finished yet, do nothing
+            return
+        }
+        table.getTable(currState)[action.index] = Common.ALPHA * (qTarget - qPredict)
     }
+
+    data class LastLerningState(val currState: BoardState, val currAction: Action, val nextState: BoardState, val reward: Float)
 
 }

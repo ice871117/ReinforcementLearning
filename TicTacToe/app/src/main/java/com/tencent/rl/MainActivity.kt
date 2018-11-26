@@ -5,15 +5,14 @@ import android.support.v7.app.AlertDialog
 import android.support.v7.app.AppCompatActivity
 import android.support.v7.widget.GridLayoutManager
 import android.support.v7.widget.RecyclerView
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.SeekBar
 import android.widget.TextView
-import com.tencent.rl.core.Action
-import com.tencent.rl.core.ChessPieceState
-import com.tencent.rl.core.Common
-import com.tencent.rl.core.EnvironmentCtrl
+import com.tencent.rl.core.*
 import com.tencent.rl.widget.BorderDecoration
 import java.io.File
 
@@ -22,6 +21,8 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val COLUMNS = Common.SIZE
         private const val ITEM_COUNT = COLUMNS * COLUMNS
+        private const val MENU_ID_QLEARNING = 1
+        private const val MENU_ID_SARSA = 2
     }
 
     private var dialog: AlertDialog? = null
@@ -47,6 +48,22 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         dialog?.dismiss()
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        super.onCreateOptionsMenu(menu)
+        menu?.add(Menu.NONE,  MENU_ID_QLEARNING , 0, R.string.qlearning)
+        menu?.add(Menu.NONE,  MENU_ID_SARSA , 1, R.string.sarsa)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem?): Boolean {
+        super.onOptionsItemSelected(item)
+        when (item?.itemId) {
+            MENU_ID_QLEARNING -> EnvironmentCtrl.changeEngine(QLearningTicTacToeEngine())
+            MENU_ID_SARSA -> EnvironmentCtrl.changeEngine(SarsaTicTacToeEngine())
+        }
+        return true
     }
 
     private fun initUI() {
