@@ -3,6 +3,8 @@ package com.tencent.rl.core
 import android.os.Handler
 import android.os.Looper
 import java.io.Closeable
+import java.io.ObjectInputStream
+import java.io.ObjectOutputStream
 import java.io.Serializable
 import java.lang.Exception
 import java.util.*
@@ -158,6 +160,74 @@ class BoardState(val size: Int) : Cloneable, Serializable {
         val ret = BoardState(size)
         for ((index, array) in matrix.withIndex()) {
             ret.matrix[index] = Arrays.copyOf(array, array.size)
+        }
+        return ret
+    }
+}
+
+class QTable : Cloneable, Serializable {
+
+    companion object {
+        @JvmStatic
+        private val serialVersionUID = 1L
+    }
+
+    private var table = HashMap<BoardState, FloatArray>()
+
+    private fun buildActionArray(): FloatArray = FloatArray(columns()) { 0f }
+
+    fun columns(): Int = Common.BOARD_TOTAL_SIZE
+
+    fun getTable(state: BoardState): FloatArray {
+        var tableForState = table[state]
+        if (tableForState == null) {
+            tableForState = buildActionArray()
+            synchronized(this@QTable) {
+                table[state] = tableForState
+            }
+        }
+        return tableForState
+    }
+
+    fun queryMax(state: BoardState): Int {
+        val tableForState = table[state]
+        return if (tableForState == null) {
+            val newTable = buildActionArray()
+            synchronized(this@QTable) {
+                table[state] = newTable
+            }
+            findMaxIndex(newTable, state.availableActionIndexes())
+        } else {
+            findMaxIndex(tableForState, state.availableActionIndexes())
+        }
+    }
+
+    private fun findMaxIndex(array: FloatArray, availableIndexes: List<Int>): Int {
+        val max = array.filterIndexed { index, _ -> index in availableIndexes }.max()
+        val result = mutableListOf<Int>()
+        array.forEachIndexed { index, value ->
+            if (value >= max!!) {
+                result.add(index)
+            }
+        }
+        // use random in case that some columns has the same value
+        return result.intersect(availableIndexes).random()
+    }
+
+    private fun writeObject(outputStream: ObjectOutputStream) {
+        synchronized(this@QTable) {
+            outputStream.writeObject(table)
+        }
+    }
+
+    private fun readObject(inputStream: ObjectInputStream) {
+        table = (inputStream.readObject() as? HashMap<BoardState, FloatArray>) ?: HashMap()
+    }
+
+    public override fun clone(): QTable {
+        val ret = QTable()
+        for ((index, value) in table) {
+            ret.table[index] = Arrays.copyOf(value, value.size)
         }
         return ret
     }

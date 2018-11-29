@@ -7,8 +7,6 @@ import android.widget.Toast
 import com.tencent.rl.MyApplication
 import com.tencent.rl.R
 import java.io.*
-import java.lang.IllegalStateException
-import java.util.*
 import java.util.concurrent.Executors
 
 object EnvironmentCtrl {
@@ -17,66 +15,30 @@ object EnvironmentCtrl {
         RESULT_DRAW, RESULT_HUMAN_LOSE, RESULT_HUMAN_WIN, IN_PROGRESS
     }
 
+    enum class EngineType {
+        QLEARNING, SARSA, SARSA_LAMBDA
+    }
+
     @Volatile
-    private var qTable = QTable()
-    private var currBoardState = BoardState(Common.SIZE)
-    private var engine: IRLEngine = QLearningTicTacToeEngine()
+    internal var qTable = QTable()
+    private lateinit var impl: AbsEnvironmentImpl
     private val threadPool = Executors.newFixedThreadPool(1)
     var updateListener: ((index: Int) -> Unit)? = null
-    private var lastStateForSarsa: SarsaTicTacToeEngine.LastLerningState? = null
 
-    fun changeEngine(newEngine: IRLEngine) {
-        engine = newEngine
+    fun changeEngine(newEngine: EngineType) {
+        impl = when (newEngine) {
+            EngineType.QLEARNING -> QLearningEnvironmentImpl()
+            EngineType.SARSA -> SarsaEnvironmentImpl()
+            EngineType.SARSA_LAMBDA -> SarsaLambdaEnvironmentImpl()
+        }
         Toast.makeText(MyApplication.GlobalContext, "Change Engine to ${newEngine.javaClass.simpleName}", Toast.LENGTH_SHORT).show()
     }
 
-    fun updateByHuman(action: Action): GameResult {
-        Log.v(Common.TAG, "HUMAN ===> action=$action")
-        val tempState = currBoardState.mutate(action)
-        if (tempState != null) {
-            currBoardState = tempState
-            return when {
-                currBoardState.getWinner() == Common.HUMAN ->  {
-                    learnForSarsa(null)
-                    GameResult.RESULT_HUMAN_WIN
-                }
-                currBoardState.isFull() -> GameResult.RESULT_DRAW
-                else -> updateByAI()
-            }
-        } else {
-            return GameResult.IN_PROGRESS
-        }
-    }
-
-    private fun updateByAI(): GameResult {
-        val action = engine.chooseAction(qTable, currBoardState)
-        learnForSarsa(action)
-        val feedback = engine.getFeedBack(currBoardState, action)
-        // remember as last state
-        lastStateForSarsa = SarsaTicTacToeEngine.LastLerningState(currBoardState, action, feedback.first, feedback.second)
-        // for qlearning or sarsa when AI win
-        engine.doLearning(qTable, currBoardState, action, feedback.first, feedback.second, null)
-        currBoardState = feedback.first
-        updateListener?.invoke(action.index)
-        return when {
-            currBoardState.getWinner() == Common.AI -> GameResult.RESULT_HUMAN_LOSE
-            currBoardState.isFull() -> GameResult.RESULT_DRAW
-            else -> GameResult.IN_PROGRESS
-        }
-    }
-
-    private fun learnForSarsa(action: Action?) {
-        if (engine is SarsaTicTacToeEngine) {
-            lastStateForSarsa?.apply {
-                engine.doLearning(qTable, currState, currAction, nextState, reward, action)
-            }
-        }
-    }
+    fun updateByHuman(action: Action) = impl.updateByHuman(action)
 
     fun reset() {
         Log.w(Common.TAG, "Game reset!")
-        currBoardState = BoardState(Common.SIZE)
-        lastStateForSarsa = null
+        impl.reset()
     }
 
     fun saveQTable(path: String?) {
@@ -157,7 +119,7 @@ object EnvironmentCtrl {
         private var started = false
 
         override fun run() {
-            doWhenPlay(play(EnvironmentCtrl.currBoardState))
+            doWhenPlay(play(impl.currBoardState))
             handler.postDelayed(this, interval)
         }
 
@@ -177,81 +139,122 @@ object EnvironmentCtrl {
 
     class RandomPlayer(interval: Long, doWhenPlay: (Int) -> Unit) : AbsPlayer(interval, doWhenPlay) {
         override fun play(state: BoardState): Int {
-            return WinDetector.findBestStep(currBoardState, Common.HUMAN) ?: state.availableActionIndexes().random()
+            return WinDetector.findBestStep(impl.currBoardState, Common.HUMAN) ?: state.availableActionIndexes().random()
         }
+    }
+}
+
+abstract class AbsEnvironmentImpl(val engine: IRLEngine) {
+
+    internal var currBoardState = BoardState(Common.SIZE)
+
+    abstract fun updateByHuman(action: Action): EnvironmentCtrl.GameResult
+
+    abstract fun updateByAI(): EnvironmentCtrl.GameResult
+
+    open fun reset() {
+        currBoardState = BoardState(Common.SIZE)
     }
 
 }
 
+class QLearningEnvironmentImpl : AbsEnvironmentImpl(QLearningTicTacToeEngine()) {
 
-class QTable : Cloneable, Serializable {
-
-    companion object {
-        @JvmStatic
-        private val serialVersionUID = 1L
-    }
-
-    private var table = HashMap<BoardState, FloatArray>()
-
-    private fun buildActionArray(): FloatArray = FloatArray(columns()) { 0f }
-
-    fun columns(): Int = Common.BOARD_TOTAL_SIZE
-
-    fun getTable(state: BoardState): FloatArray {
-        var tableForState = table[state]
-        if (tableForState == null) {
-            tableForState = buildActionArray()
-            synchronized(this@QTable) {
-                table[state] = tableForState
+    override fun updateByHuman(action: Action): EnvironmentCtrl.GameResult {
+        Log.v(Common.TAG, "HUMAN ===> action=$action")
+        val tempState = currBoardState.mutate(action)
+        if (tempState != null) {
+            currBoardState = tempState
+            return when {
+                currBoardState.getWinner() == Common.HUMAN -> EnvironmentCtrl.GameResult.RESULT_HUMAN_WIN
+                currBoardState.isFull() -> EnvironmentCtrl.GameResult.RESULT_DRAW
+                else -> updateByAI()
             }
-        }
-        return tableForState
-    }
-
-    fun queryMax(state: BoardState): Int {
-        val tableForState = table[state]
-        return if (tableForState == null) {
-            val newTable = buildActionArray()
-            synchronized(this@QTable) {
-                table[state] = newTable
-            }
-            findMaxIndex(newTable, state.availableActionIndexes())
         } else {
-            findMaxIndex(tableForState, state.availableActionIndexes())
+            return EnvironmentCtrl.GameResult.IN_PROGRESS
         }
     }
 
-    private fun findMaxIndex(array: FloatArray, availableIndexes: List<Int>): Int {
-        val max = array.filterIndexed { index, _ -> index in availableIndexes }.max()
-        val result = mutableListOf<Int>()
-        array.forEachIndexed { index, value ->
-            if (value >= max!!) {
-                result.add(index)
-            }
-        }
-        // use random in case that some columns has the same value
-        return result.intersect(availableIndexes).random()
-    }
-
-    private fun writeObject(outputStream: ObjectOutputStream) {
-        synchronized(this@QTable) {
-            outputStream.writeObject(table)
+    override fun updateByAI(): EnvironmentCtrl.GameResult {
+        val action = engine.chooseAction(EnvironmentCtrl.qTable, currBoardState)
+        val feedback = engine.getFeedBack(currBoardState, action)
+        // for qlearning or sarsa when AI win
+        engine.doLearning(EnvironmentCtrl.qTable, currBoardState, action, feedback.first, feedback.second, null)
+        currBoardState = feedback.first
+        EnvironmentCtrl.updateListener?.invoke(action.index)
+        return when {
+            currBoardState.getWinner() == Common.AI -> EnvironmentCtrl.GameResult.RESULT_HUMAN_LOSE
+            currBoardState.isFull() -> EnvironmentCtrl.GameResult.RESULT_DRAW
+            else -> EnvironmentCtrl.GameResult.IN_PROGRESS
         }
     }
 
-    private fun readObject(inputStream: ObjectInputStream) {
-        table = (inputStream.readObject() as? HashMap<BoardState, FloatArray>) ?: HashMap()
-    }
-
-    public override fun clone(): QTable {
-        val ret = QTable()
-        for ((index, value) in table) {
-            ret.table[index] = Arrays.copyOf(value, value.size)
-        }
-        return ret
-    }
 }
 
+class SarsaEnvironmentImpl : AbsEnvironmentImpl(SarsaTicTacToeEngine()) {
+
+    private var lastStateForSarsa: SarsaTicTacToeEngine.LastLerningState? = null
+
+    override fun updateByHuman(action: Action): EnvironmentCtrl.GameResult {
+        Log.v(Common.TAG, "HUMAN ===> action=$action")
+        val tempState = currBoardState.mutate(action)
+        if (tempState != null) {
+            currBoardState = tempState
+            return when {
+                currBoardState.getWinner() == Common.HUMAN -> {
+                    learnForSarsa(null)
+                    EnvironmentCtrl.GameResult.RESULT_HUMAN_WIN
+                }
+                currBoardState.isFull() -> EnvironmentCtrl.GameResult.RESULT_DRAW
+                else -> updateByAI()
+            }
+        } else {
+            return EnvironmentCtrl.GameResult.IN_PROGRESS
+        }
+    }
+
+    override fun updateByAI(): EnvironmentCtrl.GameResult {
+        val action = engine.chooseAction(EnvironmentCtrl.qTable, currBoardState)
+        learnForSarsa(action)
+        val feedback = engine.getFeedBack(currBoardState, action)
+        // remember as last state
+        lastStateForSarsa = SarsaTicTacToeEngine.LastLerningState(currBoardState, action, feedback.first, feedback.second)
+        // for qlearning or sarsa when AI win
+        engine.doLearning(EnvironmentCtrl.qTable, currBoardState, action, feedback.first, feedback.second, null)
+        currBoardState = feedback.first
+        EnvironmentCtrl.updateListener?.invoke(action.index)
+        return when {
+            currBoardState.getWinner() == Common.AI -> EnvironmentCtrl.GameResult.RESULT_HUMAN_LOSE
+            currBoardState.isFull() -> EnvironmentCtrl.GameResult.RESULT_DRAW
+            else -> EnvironmentCtrl.GameResult.IN_PROGRESS
+        }
+    }
+
+    private fun learnForSarsa(action: Action?) {
+        lastStateForSarsa?.apply {
+            engine.doLearning(EnvironmentCtrl.qTable, currState, currAction, nextState, reward, action)
+        }
+    }
+
+    override fun reset() {
+        super.reset()
+        lastStateForSarsa = null
+    }
+
+}
+
+class SarsaLambdaEnvironmentImpl : AbsEnvironmentImpl(SarsaLambdaTicTacToeEngine()) {
+
+    override fun updateByHuman(action: Action): EnvironmentCtrl.GameResult {
+        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+    }
+
+    override fun updateByAI(): EnvironmentCtrl.GameResult {
+        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+    }
+
+
+}
 
 object WinDetector {
 

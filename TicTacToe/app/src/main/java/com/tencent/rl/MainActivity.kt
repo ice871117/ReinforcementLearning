@@ -1,15 +1,16 @@
 package com.tencent.rl
 
+import android.content.Context
+import android.content.SharedPreferences
 import android.os.Bundle
 import android.support.v7.app.AlertDialog
 import android.support.v7.app.AppCompatActivity
 import android.support.v7.widget.GridLayoutManager
 import android.support.v7.widget.RecyclerView
-import android.view.Menu
-import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.RadioGroup
 import android.widget.SeekBar
 import android.widget.TextView
 import com.tencent.rl.core.*
@@ -21,8 +22,8 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val COLUMNS = Common.SIZE
         private const val ITEM_COUNT = COLUMNS * COLUMNS
-        private const val MENU_ID_QLEARNING = 1
-        private const val MENU_ID_SARSA = 2
+        private const val PREF_NAME = "TicTacToe_pref"
+        private const val KEY_ENGINE_TYPE = PREF_NAME + "KEY_ENGINE_TYPE"
     }
 
     private var dialog: AlertDialog? = null
@@ -33,6 +34,7 @@ class MainActivity : AppCompatActivity() {
             resetGame()
         }
     }
+    private lateinit var group: RadioGroup
 
     private val adapter: MyAdapter by lazy {
         MyAdapter()
@@ -50,22 +52,6 @@ class MainActivity : AppCompatActivity() {
         dialog?.dismiss()
     }
 
-    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
-        super.onCreateOptionsMenu(menu)
-        menu?.add(Menu.NONE,  MENU_ID_QLEARNING , 0, R.string.qlearning)
-        menu?.add(Menu.NONE,  MENU_ID_SARSA , 1, R.string.sarsa)
-        return true
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem?): Boolean {
-        super.onOptionsItemSelected(item)
-        when (item?.itemId) {
-            MENU_ID_QLEARNING -> EnvironmentCtrl.changeEngine(QLearningTicTacToeEngine())
-            MENU_ID_SARSA -> EnvironmentCtrl.changeEngine(SarsaTicTacToeEngine())
-        }
-        return true
-    }
-
     private fun initUI() {
 
         findViewById<Button>(R.id.restart_btn).setOnClickListener {
@@ -73,8 +59,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.train_btn).setOnClickListener {
-            (it as Button).let {
-                button ->
+            (it as Button).let { button ->
                 if (!simulatePlayer.isStarted()) {
                     simulatePlayer.start()
                     button.setText(R.string.stop_train)
@@ -92,7 +77,7 @@ class MainActivity : AppCompatActivity() {
         val progressText = findViewById<TextView>(R.id.progress_desc)
 
         progressText.text = getEpsilonDesc((Common.EPSILON * 100).toInt())
-        findViewById<SeekBar>(R.id.epsilon_progress).apply { progress = (Common.EPSILON * 100).toInt() }.setOnSeekBarChangeListener(object: SeekBar.OnSeekBarChangeListener {
+        findViewById<SeekBar>(R.id.epsilon_progress).apply { progress = (Common.EPSILON * 100).toInt() }.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
 
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 progressText.text = getEpsilonDesc(progress)
@@ -111,9 +96,47 @@ class MainActivity : AppCompatActivity() {
         recyclerView.layoutManager = GridLayoutManager(this@MainActivity, COLUMNS)
         recyclerView.addItemDecoration(BorderDecoration(this@MainActivity))
         recyclerView.adapter = adapter
+
+        group = findViewById(R.id.radio_group)
+
+        val engineType = restoreEngineType()
+        val btnIdToCheck = when (engineType) {
+            EnvironmentCtrl.EngineType.QLEARNING -> R.id.radio_btn1
+            EnvironmentCtrl.EngineType.SARSA -> R.id.radio_btn2
+            EnvironmentCtrl.EngineType.SARSA_LAMBDA -> R.id.radio_btn3
+        }
+        group.check(btnIdToCheck)
+        EnvironmentCtrl.changeEngine(engineType)
+
+        group.setOnCheckedChangeListener { _, checkedId ->
+            val engineType = when (checkedId) {
+                R.id.radio_btn1 -> EnvironmentCtrl.EngineType.QLEARNING
+                R.id.radio_btn2 -> EnvironmentCtrl.EngineType.SARSA
+                R.id.radio_btn3 -> EnvironmentCtrl.EngineType.SARSA_LAMBDA
+                else -> null
+            }?.let {
+                saveEngineType(it.ordinal)
+                EnvironmentCtrl.changeEngine(it)
+            }
+        }
     }
 
-    private fun getEpsilonDesc(progress: Int) = String.format("%s %d %%", getString(R.string.epsilon),  progress)
+    private fun saveEngineType(type: Int) {
+        getSharedPreference().edit().apply {
+            putInt(KEY_ENGINE_TYPE, type)
+        }.apply()
+    }
+
+    private fun restoreEngineType(): EnvironmentCtrl.EngineType {
+        val savedType = getSharedPreference().getInt(KEY_ENGINE_TYPE, EnvironmentCtrl.EngineType.QLEARNING.ordinal)
+        return EnvironmentCtrl.EngineType.values()[savedType]
+    }
+
+    private fun getSharedPreference(): SharedPreferences {
+        return getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+    }
+
+    private fun getEpsilonDesc(progress: Int) = String.format("%s %d %%", getString(R.string.epsilon), progress)
 
     private fun initEnv() {
         Common.SAVE_PATH = externalCacheDir.absolutePath + File.separator + "model.rl"

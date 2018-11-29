@@ -20,62 +20,94 @@
         android:id="@+id/restart_btn"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="@string/restart"
-        android:gravity="center"
-        android:layout_marginTop="5dp"
         android:layout_marginLeft="5dp"
+        android:layout_marginTop="10dp"
+        android:gravity="center"
+        android:text="@string/restart"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toLeftOf="@+id/train_btn"
-        app:layout_constraintTop_toBottomOf="@+id/recycler_view"
-        />
+        app:layout_constraintTop_toBottomOf="@+id/recycler_view" />
 
     <Button
         android:id="@+id/train_btn"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="@string/train"
-        android:gravity="center"
-        android:layout_marginTop="5dp"
         android:layout_marginLeft="5dp"
+        android:layout_marginTop="10dp"
         android:layout_marginRight="5dp"
+        android:gravity="center"
+        android:text="@string/train"
         app:layout_constraintLeft_toRightOf="@+id/restart_btn"
         app:layout_constraintRight_toLeftOf="@+id/save_btn"
-        app:layout_constraintTop_toBottomOf="@+id/recycler_view"
-        />
+        app:layout_constraintTop_toBottomOf="@+id/recycler_view" />
 
     <Button
         android:id="@+id/save_btn"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="@string/save"
-        android:gravity="center"
-        android:layout_marginTop="5dp"
+        android:layout_marginTop="10dp"
         android:layout_marginRight="5dp"
+        android:gravity="center"
+        android:text="@string/save"
         app:layout_constraintLeft_toRightOf="@+id/train_btn"
         app:layout_constraintRight_toRightOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/recycler_view"
-        />
+        app:layout_constraintTop_toBottomOf="@+id/recycler_view" />
 
     <TextView
         android:id="@+id/progress_desc"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="@string/epsilon"
         android:layout_marginLeft="10dp"
-        android:layout_marginTop="5dp"
+        android:layout_marginTop="10dp"
+        android:text="@string/epsilon"
         app:layout_constraintLeft_toLeftOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/restart_btn"
-        />
+        app:layout_constraintTop_toBottomOf="@+id/restart_btn" />
 
     <SeekBar
         android:id="@+id/epsilon_progress"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
         android:max="100"
         android:progress="90"
-        android:layout_marginTop="5dp"
+        android:paddingStart="0dp"
+        android:paddingEnd="0dp"
+        android:layout_marginLeft="10dp"
+        android:layout_marginRight="10dp"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toRightOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/progress_desc"/>
+        app:layout_constraintTop_toBottomOf="@+id/progress_desc"
+        />
+
+    <RadioGroup
+        android:id="@+id/radio_group"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="10dp"
+        android:layout_marginLeft="5dp"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/epsilon_progress">
+
+        <RadioButton
+            android:id="@+id/radio_btn1"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            android:text="@string/q_learning" />
+
+        <RadioButton
+            android:id="@+id/radio_btn2"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/sarsa" />
+
+        <RadioButton
+            android:id="@+id/radio_btn3"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/sarsa_lambda" />
+    </RadioGroup>
 
 </android.support.constraint.ConstraintLayout>

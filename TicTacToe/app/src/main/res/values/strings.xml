@@ -11,6 +11,7 @@
     <string name="saved">"Model save success"</string>
     <string name="loaded">"Model load success"</string>
     <string name="epsilon">"Epsilon(greedy):"</string>
-    <string name="qlearning">"QLearning"</string>
+    <string name="q_learning">"QLearning"</string>
     <string name="sarsa">"Sarsa"</string>
+    <string name="sarsa_lambda">"SarsaLambda"</string>
 </resources>

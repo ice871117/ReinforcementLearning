@@ -82,3 +82,12 @@ class SarsaTicTacToeEngine: BaseTicTacToeEngine() {
     data class LastLerningState(val currState: BoardState, val currAction: Action, val nextState: BoardState, val reward: Float)
 
 }
+
+class SarsaLambdaTicTacToeEngine: BaseTicTacToeEngine() {
+
+    override fun getEpsilon() = Common.EPSILON
+
+    override fun doLearning(table: QTable, currState: BoardState, action: Action, nextState: BoardState, reward: Float, nextAction: Action?) {
+        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+    }
+}
