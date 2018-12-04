@@ -2,11 +2,13 @@ package com.tencent.rl.core
 
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import java.io.Closeable
 import java.io.ObjectInputStream
 import java.io.ObjectOutputStream
 import java.io.Serializable
 import java.lang.Exception
+import java.lang.IllegalStateException
 import java.util.*
 
 enum class ChessPieceState(val value: Int) {
@@ -21,6 +23,7 @@ object Common {
     var EPSILON = 0.9f                   // 贪婪度 greedy
     const val ALPHA = 0.1f                     // 学习率
     const val GAMMA = 0.9f                     // 奖励递减值
+    const val LAMBDA = 0.7f
     val HUMAN = ChessPieceState.CROSS
     val AI = ChessPieceState.CIRCLE
     const val TAG = "RL-TicTacToe"
@@ -84,14 +87,6 @@ class BoardState(val size: Int) : Cloneable, Serializable {
     @Transient
     private var winner: ChessPieceState? = null
 
-    override fun hashCode(): Int {
-        var result = 1
-        for (array in matrix) {
-            result = 31 * result + Arrays.hashCode(array)
-        }
-        return result
-    }
-
     fun get(x: Int, y: Int): ChessPieceState {
         return matrix[x][y]
     }
@@ -143,6 +138,14 @@ class BoardState(val size: Int) : Cloneable, Serializable {
         return result
     }
 
+    override fun hashCode(): Int {
+        var result = 1
+        for (array in matrix) {
+            result = 31 * result + Arrays.hashCode(array)
+        }
+        return result
+    }
+
     override fun equals(other: Any?): Boolean {
         if (other !is BoardState) {
             // fast fail
@@ -162,6 +165,47 @@ class BoardState(val size: Int) : Cloneable, Serializable {
             ret.matrix[index] = Arrays.copyOf(array, array.size)
         }
         return ret
+    }
+
+    override fun toString(): String {
+        val buffer = StringBuilder()
+        buffer.append("BoardState:{")
+        for (i in 0 until size) {
+            buffer.append("[")
+            for (j in 0 until size) {
+                buffer.append(matrix[i][j])
+                if (j < size - 1) {
+                    buffer.append(",")
+                }
+            }
+            buffer.append("]")
+            if (i < size - 1) {
+                buffer.append(",")
+            }
+        }
+        buffer.append("}")
+        return super.toString()
+    }
+}
+
+inline fun FloatArray.reset() {
+    for (i in 0 until this.size) {
+        this[i] = 0f
+    }
+}
+
+inline fun FloatArray.addToEach(floatArray: FloatArray, multiplier: Float) {
+    if (this.size != floatArray.size) {
+        throw IllegalStateException("addToEach() failed!! Size must be equal, caller.size=${this.size} callee.size=${floatArray.size}")
+    }
+    for (i in 0 until this.size) {
+        this[i] += floatArray[i] * multiplier
+    }
+}
+
+inline fun FloatArray.multiplyEachBy(multiplier: Float) {
+    for (i in 0 until this.size) {
+        this[i] *= multiplier
     }
 }
 
@@ -201,6 +245,38 @@ class QTable : Cloneable, Serializable {
             findMaxIndex(tableForState, state.availableActionIndexes())
         }
     }
+
+    fun traverse(block: (state: BoardState, array: FloatArray) -> Unit) {
+        for ( (key, value) in table) {
+            block.invoke(key, value)
+        }
+    }
+
+    fun reset(state: BoardState? = null) {
+        if (state == null) {
+            for ( (_, value) in table) {
+                value.reset()
+            }
+        } else {
+            val tableForState = table[state]
+            if (tableForState == null) {
+                table[state] = buildActionArray()
+            } else {
+                tableForState.reset()
+            }
+        }
+    }
+
+    fun selfCheck() {
+        for (key in table.keys) {
+            for (innerKey in table.keys) {
+                if (key !== innerKey && key.equals(innerKey)) {
+                    Log.w(Common.TAG, "error found left(${key.hashCode()}): $key,\n right(${innerKey.hashCode()}): $innerKey")
+                }
+            }
+        }
+    }
+
 
     private fun findMaxIndex(array: FloatArray, availableIndexes: List<Int>): Int {
         val max = array.filterIndexed { index, _ -> index in availableIndexes }.max()

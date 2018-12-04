@@ -92,6 +92,7 @@ object EnvironmentCtrl {
                     Common.runOnUIThread {
                         Toast.makeText(MyApplication.GlobalContext, R.string.loaded, Toast.LENGTH_SHORT).show()
                     }
+                    qTable.selfCheck()
                 } catch (e: IOException) {
                     Log.w(Common.TAG, "loadQTable failed, due to ${e.localizedMessage}", e)
                 } finally {
@@ -144,7 +145,7 @@ object EnvironmentCtrl {
     }
 }
 
-abstract class AbsEnvironmentImpl(val engine: IRLEngine) {
+abstract class AbsEnvironmentImpl {
 
     internal var currBoardState = BoardState(Common.SIZE)
 
@@ -152,13 +153,18 @@ abstract class AbsEnvironmentImpl(val engine: IRLEngine) {
 
     abstract fun updateByAI(): EnvironmentCtrl.GameResult
 
+    protected abstract val engine: IRLEngine
+
     open fun reset() {
         currBoardState = BoardState(Common.SIZE)
     }
 
 }
 
-class QLearningEnvironmentImpl : AbsEnvironmentImpl(QLearningTicTacToeEngine()) {
+class QLearningEnvironmentImpl : AbsEnvironmentImpl() {
+
+    override val engine: IRLEngine
+        get() = QLearningTicTacToeEngine()
 
     override fun updateByHuman(action: Action): EnvironmentCtrl.GameResult {
         Log.v(Common.TAG, "HUMAN ===> action=$action")
@@ -191,7 +197,10 @@ class QLearningEnvironmentImpl : AbsEnvironmentImpl(QLearningTicTacToeEngine()) 
 
 }
 
-class SarsaEnvironmentImpl : AbsEnvironmentImpl(SarsaTicTacToeEngine()) {
+open class SarsaEnvironmentImpl : AbsEnvironmentImpl() {
+
+    override val engine: IRLEngine
+        get() = SarsaTicTacToeEngine()
 
     private var lastStateForSarsa: SarsaTicTacToeEngine.LastLerningState? = null
 
@@ -243,16 +252,15 @@ class SarsaEnvironmentImpl : AbsEnvironmentImpl(SarsaTicTacToeEngine()) {
 
 }
 
-class SarsaLambdaEnvironmentImpl : AbsEnvironmentImpl(SarsaLambdaTicTacToeEngine()) {
+class SarsaLambdaEnvironmentImpl : SarsaEnvironmentImpl() {
 
-    override fun updateByHuman(action: Action): EnvironmentCtrl.GameResult {
-        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+    override val engine: IRLEngine
+        get() = SarsaLambdaTicTacToeEngine()
+
+    override fun reset() {
+        super.reset()
+        (engine as SarsaLambdaTicTacToeEngine).reset()
     }
-
-    override fun updateByAI(): EnvironmentCtrl.GameResult {
-        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
-    }
-
 
 }
 
