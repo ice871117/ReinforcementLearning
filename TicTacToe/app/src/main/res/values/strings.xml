@@ -8,8 +8,8 @@
     <string name="ok">"OK"</string>
     <string name="stop_train">"Stop Train"</string>
     <string name="save">"Save QTable"</string>
-    <string name="saved">"Model save success"</string>
-    <string name="loaded">"Model load success"</string>
+    <string name="saved">"%s's model save success"</string>
+    <string name="loaded">"%s's model load success"</string>
     <string name="epsilon">"Epsilon(greedy):"</string>
     <string name="q_learning">"QLearning"</string>
     <string name="sarsa">"Sarsa"</string>

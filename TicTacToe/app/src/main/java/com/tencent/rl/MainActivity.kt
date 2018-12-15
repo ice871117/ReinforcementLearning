@@ -3,10 +3,12 @@ package com.tencent.rl
 import android.content.Context
 import android.content.SharedPreferences
 import android.os.Bundle
+import android.os.Handler
 import android.support.v7.app.AlertDialog
 import android.support.v7.app.AppCompatActivity
 import android.support.v7.widget.GridLayoutManager
 import android.support.v7.widget.RecyclerView
+import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
@@ -15,7 +17,7 @@ import android.widget.SeekBar
 import android.widget.TextView
 import com.tencent.rl.core.*
 import com.tencent.rl.widget.BorderDecoration
-import java.io.File
+import kotlin.random.Random
 
 class MainActivity : AppCompatActivity() {
 
@@ -24,16 +26,37 @@ class MainActivity : AppCompatActivity() {
         private const val ITEM_COUNT = COLUMNS * COLUMNS
         private const val PREF_NAME = "TicTacToe_pref"
         private const val KEY_ENGINE_TYPE = PREF_NAME + "KEY_ENGINE_TYPE"
+        private val HUMAN = ChessPieceState.CROSS
     }
 
     private var dialog: AlertDialog? = null
-    private val simulatePlayer = EnvironmentCtrl.RandomPlayer(100) { index ->
+    private val mainHandler = Handler()
+    private val aiEnv1 = AIEnv(Common.AI_PLAYER_1, ChessPieceState.CIRCLE) { index ->
+        adapter.update(index, ChessPieceState.CIRCLE)
+    }
+
+    /**
+     * open this comment to utilize SophisticatedPlayer
+     */
+//    private val simulatePlayer = SophisticatedPlayer(ChessPieceState.CROSS, aiEnv1, 1000) { index, player ->
+//        adapter.holders[index]?.itemView?.performClick()
+//        if (dialog != null && dialog!!.isShowing) {
+//            dialog!!.dismiss()
+//            resetGame()
+//        }
+//    }
+
+    /**
+     * open this comment to utilize AIPlayer, which might employ two reinforcement learning algorithms to train each other.
+     */
+    private val simulatePlayer = AIPlayer(ChessPieceState.CROSS, aiEnv1, 1000) { index, player ->
         adapter.holders[index]?.itemView?.performClick()
         if (dialog != null && dialog!!.isShowing) {
             dialog!!.dismiss()
             resetGame()
         }
     }
+
     private lateinit var group: RadioGroup
 
     private val adapter: MyAdapter by lazy {
@@ -71,7 +94,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.save_btn).setOnClickListener {
-            EnvironmentCtrl.saveQTable(Common.SAVE_PATH)
+            aiEnv1.saveQTable(Common.SAVE_DIR_PATH)
         }
 
         val progressText = findViewById<TextView>(R.id.progress_desc)
@@ -101,22 +124,22 @@ class MainActivity : AppCompatActivity() {
 
         val engineType = restoreEngineType()
         val btnIdToCheck = when (engineType) {
-            EnvironmentCtrl.EngineType.QLEARNING -> R.id.radio_btn1
-            EnvironmentCtrl.EngineType.SARSA -> R.id.radio_btn2
-            EnvironmentCtrl.EngineType.SARSA_LAMBDA -> R.id.radio_btn3
+            AIEnv.EngineType.QLEARNING -> R.id.radio_btn1
+            AIEnv.EngineType.SARSA -> R.id.radio_btn2
+            AIEnv.EngineType.SARSA_LAMBDA -> R.id.radio_btn3
         }
         group.check(btnIdToCheck)
-        EnvironmentCtrl.changeEngine(engineType)
+        aiEnv1.setEngine(engineType)
 
         group.setOnCheckedChangeListener { _, checkedId ->
             val engineType = when (checkedId) {
-                R.id.radio_btn1 -> EnvironmentCtrl.EngineType.QLEARNING
-                R.id.radio_btn2 -> EnvironmentCtrl.EngineType.SARSA
-                R.id.radio_btn3 -> EnvironmentCtrl.EngineType.SARSA_LAMBDA
+                R.id.radio_btn1 -> AIEnv.EngineType.QLEARNING
+                R.id.radio_btn2 -> AIEnv.EngineType.SARSA
+                R.id.radio_btn3 -> AIEnv.EngineType.SARSA_LAMBDA
                 else -> null
             }?.let {
                 saveEngineType(it.ordinal)
-                EnvironmentCtrl.changeEngine(it)
+                aiEnv1.setEngine(it)
             }
         }
     }
@@ -127,9 +150,9 @@ class MainActivity : AppCompatActivity() {
         }.apply()
     }
 
-    private fun restoreEngineType(): EnvironmentCtrl.EngineType {
-        val savedType = getSharedPreference().getInt(KEY_ENGINE_TYPE, EnvironmentCtrl.EngineType.QLEARNING.ordinal)
-        return EnvironmentCtrl.EngineType.values()[savedType]
+    private fun restoreEngineType(): AIEnv.EngineType {
+        val savedType = getSharedPreference().getInt(KEY_ENGINE_TYPE, AIEnv.EngineType.QLEARNING.ordinal)
+        return AIEnv.EngineType.values()[savedType]
     }
 
     private fun getSharedPreference(): SharedPreferences {
@@ -139,16 +162,18 @@ class MainActivity : AppCompatActivity() {
     private fun getEpsilonDesc(progress: Int) = String.format("%s %d %%", getString(R.string.epsilon), progress)
 
     private fun initEnv() {
-        Common.SAVE_PATH = externalCacheDir.absolutePath + File.separator + "model.rl"
-        EnvironmentCtrl.loadQTable(Common.SAVE_PATH)
-        EnvironmentCtrl.updateListener = { index ->
-            adapter.update(index, Common.AI)
-        }
+        Common.SAVE_DIR_PATH = externalCacheDir.absolutePath
+        aiEnv1.loadQTable(Common.SAVE_DIR_PATH)
     }
 
     private fun resetGame() {
         adapter.reset()
-        EnvironmentCtrl.reset()
+        aiEnv1.reset()
+        simulatePlayer.reset()
+        // give the ai 50% chance to take the first step
+        if (Random.nextFloat() > 0.5f) {
+            aiEnv1.updateByMe()
+        }
     }
 
     private fun showResultDialog(msg: String) {
@@ -183,12 +208,16 @@ class MainActivity : AppCompatActivity() {
             holder.index = position
             holder.itemView.setOnClickListener {
                 if (holder.state == ChessPieceState.NONE) {
-                    holder.doAction(Common.HUMAN)
-                    when (EnvironmentCtrl.updateByHuman(Action(holder.index, Common.HUMAN))) {
-                        EnvironmentCtrl.GameResult.RESULT_DRAW -> showResultDialog(getString(R.string.draw))
-                        EnvironmentCtrl.GameResult.RESULT_HUMAN_WIN -> showResultDialog(getString(R.string.win))
-                        EnvironmentCtrl.GameResult.RESULT_HUMAN_LOSE -> showResultDialog(getString(R.string.lose))
-                        EnvironmentCtrl.GameResult.IN_PROGRESS -> Unit
+                    holder.doAction(HUMAN)
+                    val humanAction = Action(holder.index, HUMAN)
+                    if (!simulatePlayer.isStarted()) {
+                        Log.v(Common.TAG, "HUMAN ===> action=$humanAction")
+                    }
+                    when (aiEnv1.updateByOpponent(humanAction)) {
+                        AIEnv.GameResult.RESULT_DRAW -> showResultDialog(getString(R.string.draw))
+                        AIEnv.GameResult.RESULT_CROSS_WIN -> showResultDialog(getString(R.string.win))
+                        AIEnv.GameResult.RESULT_CIRCLE_WIN -> showResultDialog(getString(R.string.lose))
+                        AIEnv.GameResult.IN_PROGRESS -> Unit
                     }
                 }
             }

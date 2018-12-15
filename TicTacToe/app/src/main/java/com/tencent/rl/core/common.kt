@@ -24,11 +24,19 @@ object Common {
     const val ALPHA = 0.1f                     // 学习率
     const val GAMMA = 0.9f                     // 奖励递减值
     const val LAMBDA = 0.7f
-    val HUMAN = ChessPieceState.CROSS
-    val AI = ChessPieceState.CIRCLE
     const val TAG = "RL-TicTacToe"
-    var SAVE_PATH: String? = null
+    var SAVE_DIR_PATH: String? = null
+    const val AI_PLAYER_1 = "AI_ONE"
+    const val AI_PLAYER_2 = "AI_TWO"
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    fun getOpponentChess(chess: ChessPieceState): ChessPieceState {
+        return when(chess) {
+            ChessPieceState.CROSS -> ChessPieceState.CIRCLE
+            ChessPieceState.CIRCLE -> ChessPieceState.CROSS
+            else -> throw IllegalStateException("$chess is not a valid chess here")
+        }
+    }
 
     fun actionIndex2Coord(index: Int): Pair<Int, Int> {
         val x = index / SIZE
@@ -124,6 +132,17 @@ class BoardState(val size: Int) : Cloneable, Serializable {
         return true
     }
 
+    fun isEmpty(): Boolean {
+        for (i in 0 until size) {
+            for (j in 0 until size) {
+                if (matrix[i][j] != ChessPieceState.NONE) {
+                    return false
+                }
+            }
+        }
+        return true
+    }
+
     fun availableActionIndexes(): List<Int> {
         val result = mutableListOf<Int>()
         var index = 0
@@ -165,6 +184,19 @@ class BoardState(val size: Int) : Cloneable, Serializable {
             ret.matrix[index] = Arrays.copyOf(array, array.size)
         }
         return ret
+    }
+
+    fun containsInRow(rowNum: Int, chess: ChessPieceState): Boolean {
+        return matrix[rowNum].any { it == chess }
+    }
+
+    fun containsInColumn(columnNum: Int, chess: ChessPieceState): Boolean {
+        for (i in 0 until size) {
+            if (matrix[i][columnNum] == chess) {
+                return true
+            }
+        }
+        return false
     }
 
     override fun toString(): String {

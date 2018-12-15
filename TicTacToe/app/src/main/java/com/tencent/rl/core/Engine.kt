@@ -5,9 +5,9 @@ import kotlin.random.Random
 
 interface IRLEngine {
 
-    fun getFeedBack(state: BoardState, action: Action): Pair<BoardState, Float>
+    fun step(state: BoardState, action: Action): Pair<BoardState, Float>
 
-    fun chooseAction(table: QTable, currState: BoardState): Action
+    fun chooseAction(table: QTable, currState: BoardState, chess: ChessPieceState): Action
 
     fun doLearning(table: QTable, currState: BoardState, action: Action, nextState: BoardState, reward: Float, nextAction: Action? = null)
 
@@ -15,25 +15,25 @@ interface IRLEngine {
 
 abstract class BaseTicTacToeEngine: IRLEngine {
 
-    override fun getFeedBack(state: BoardState, action: Action): Pair<BoardState, Float> {
+    override fun step(state: BoardState, action: Action): Pair<BoardState, Float> {
         var reward = 0f
         val nextState = state.mutate(action)
-        if (WinDetector.hasWon(nextState!!, Common.AI)) {
+        if (WinDetector.hasWon(nextState!!, action.chessPieceState)) {
             reward = 1f
-        } else if (WinDetector.oneMoreStepToWin(nextState!!, Common.HUMAN)) {
+        } else if (WinDetector.oneMoreStepToWin(nextState!!, Common.getOpponentChess(action.chessPieceState))) {
             reward = -1f
         }
         Log.d(Common.TAG, "AI ===> action=$action, reward=$reward")
         return Pair(nextState!!, reward)
     }
 
-    override fun chooseAction(table: QTable, currState: BoardState): Action {
+    override fun chooseAction(table: QTable, currState: BoardState, chess: ChessPieceState): Action {
         var index = if (Random.nextFloat() > Common.EPSILON) {
             currState.availableActionIndexes().random()
         } else {
             table.queryMax(currState)
         }
-        return Action(index, Common.AI)
+        return Action(index, chess)
     }
 
 }

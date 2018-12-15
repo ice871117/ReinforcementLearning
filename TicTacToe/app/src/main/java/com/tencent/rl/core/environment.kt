@@ -1,18 +1,17 @@
 package com.tencent.rl.core
 
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import android.widget.Toast
 import com.tencent.rl.MyApplication
 import com.tencent.rl.R
+import com.tencent.rl.core.Common.TAG
 import java.io.*
 import java.util.concurrent.Executors
 
-object EnvironmentCtrl {
+class AIEnv(private val myName: String, val myChess: ChessPieceState, private val updateListener: ((index: Int) -> Unit)?) {
 
     enum class GameResult {
-        RESULT_DRAW, RESULT_HUMAN_LOSE, RESULT_HUMAN_WIN, IN_PROGRESS
+        RESULT_DRAW, RESULT_CIRCLE_WIN, RESULT_CROSS_WIN, IN_PROGRESS
     }
 
     enum class EngineType {
@@ -23,18 +22,24 @@ object EnvironmentCtrl {
     internal var qTable = QTable()
     private lateinit var impl: AbsEnvironmentImpl
     private val threadPool = Executors.newFixedThreadPool(1)
-    var updateListener: ((index: Int) -> Unit)? = null
 
-    fun changeEngine(newEngine: EngineType) {
+    fun setEngine(newEngine: EngineType) {
+        val opponentChess = Common.getOpponentChess(myChess)
         impl = when (newEngine) {
-            EngineType.QLEARNING -> QLearningEnvironmentImpl()
-            EngineType.SARSA -> SarsaEnvironmentImpl()
-            EngineType.SARSA_LAMBDA -> SarsaLambdaEnvironmentImpl()
+            EngineType.QLEARNING -> QLearningEnvironmentImpl(myName, myChess, opponentChess, qTable, updateListener)
+            EngineType.SARSA -> SarsaEnvironmentImpl(myName, myChess, opponentChess, qTable, updateListener)
+            EngineType.SARSA_LAMBDA -> SarsaLambdaEnvironmentImpl(myName, myChess, opponentChess, qTable, updateListener)
         }
-        Toast.makeText(MyApplication.GlobalContext, "Change Engine to ${newEngine.javaClass.simpleName}", Toast.LENGTH_SHORT).show()
+        Toast.makeText(MyApplication.GlobalContext, "$myName Set Engine to $newEngine", Toast.LENGTH_SHORT).show()
     }
 
-    fun updateByHuman(action: Action) = impl.updateByHuman(action)
+    fun updateByOpponent(action: Action) = impl.updateByOpponent(action)
+
+    fun updateByMe() = impl.updateByMe()
+
+    fun getCurrentState(): BoardState {
+        return AbsEnvironmentImpl.CURR_BOARD_STATE
+    }
 
     fun reset() {
         Log.w(Common.TAG, "Game reset!")
@@ -50,14 +55,15 @@ object EnvironmentCtrl {
             var baos: ByteArrayOutputStream? = null
             var fos: BufferedOutputStream? = null
             try {
-                fos = BufferedOutputStream(FileOutputStream(path))
+                val file = File(path, "${myName}_model.rl")
+                fos = BufferedOutputStream(FileOutputStream(file))
                 baos = ByteArrayOutputStream()
                 val objectOutputStream = ObjectOutputStream(baos)
                 objectOutputStream.writeObject(qTable.clone())
                 fos.write(baos.toByteArray())
                 Log.i(Common.TAG, "saveQTable complete")
                 Common.runOnUIThread {
-                    Toast.makeText(MyApplication.GlobalContext, R.string.saved, Toast.LENGTH_SHORT).show()
+                    Toast.makeText(MyApplication.GlobalContext, MyApplication.GlobalContext.resources.getString(R.string.saved, myName), Toast.LENGTH_SHORT).show()
                 }
             } catch (e: IOException) {
                 Log.w(Common.TAG, "saveQTable failed, due to ${e.localizedMessage}", e)
@@ -73,13 +79,13 @@ object EnvironmentCtrl {
             Log.w(Common.TAG, "loadQTable path is null")
             return
         }
-        val file = File(path)
+        val file = File(path, "${myName}_model.rl")
         if (file.exists()) {
             threadPool.submit {
                 var bais: ByteArrayInputStream? = null
                 var fis: BufferedInputStream? = null
                 try {
-                    fis = BufferedInputStream(FileInputStream(path))
+                    fis = BufferedInputStream(FileInputStream(file.absoluteFile))
                     val buffer = ByteArray(file.length().toInt())
                     val readCount = fis.read(buffer)
                     if (readCount != buffer.size) {
@@ -90,7 +96,7 @@ object EnvironmentCtrl {
                     qTable = objectInputStream.readObject() as QTable
                     Log.i(Common.TAG, "loadQTable complete")
                     Common.runOnUIThread {
-                        Toast.makeText(MyApplication.GlobalContext, R.string.loaded, Toast.LENGTH_SHORT).show()
+                        Toast.makeText(MyApplication.GlobalContext, MyApplication.GlobalContext.resources.getString(R.string.loaded, myName), Toast.LENGTH_SHORT).show()
                     }
                     qTable.selfCheck()
                 } catch (e: IOException) {
@@ -103,145 +109,114 @@ object EnvironmentCtrl {
         }
     }
 
-    interface SimulatePlayer : Runnable {
-
-        fun play(state: BoardState): Int
-
-        fun start()
-
-        fun stop()
-
-        fun isStarted(): Boolean
-    }
-
-    abstract class AbsPlayer(private val interval: Long, private val doWhenPlay: (Int) -> Unit) : SimulatePlayer {
-
-        private val handler = Handler(Looper.getMainLooper())
-        private var started = false
-
-        override fun run() {
-            doWhenPlay(play(impl.currBoardState))
-            handler.postDelayed(this, interval)
-        }
-
-        override fun start() {
-            handler.post(this)
-            started = true
-        }
-
-        override fun stop() {
-            handler.removeCallbacks(this)
-            started = false
-        }
-
-        override fun isStarted() = started
-
-    }
-
-    class RandomPlayer(interval: Long, doWhenPlay: (Int) -> Unit) : AbsPlayer(interval, doWhenPlay) {
-        override fun play(state: BoardState): Int {
-            return WinDetector.findBestStep(impl.currBoardState, Common.HUMAN) ?: state.availableActionIndexes().random()
-        }
-    }
 }
 
-abstract class AbsEnvironmentImpl {
 
-    internal var currBoardState = BoardState(Common.SIZE)
+abstract class AbsEnvironmentImpl(val name: String, val myChess: ChessPieceState, val opponentChess: ChessPieceState, val qTable: QTable, val updateListener: ((index: Int) -> Unit)?) {
 
-    abstract fun updateByHuman(action: Action): EnvironmentCtrl.GameResult
+    companion object {
+        internal var CURR_BOARD_STATE = BoardState(Common.SIZE)
+    }
 
-    abstract fun updateByAI(): EnvironmentCtrl.GameResult
+    abstract fun updateByOpponent(action: Action): AIEnv.GameResult
+
+    abstract fun updateByMe(): AIEnv.GameResult
 
     protected abstract val engine: IRLEngine
 
     open fun reset() {
-        currBoardState = BoardState(Common.SIZE)
+        CURR_BOARD_STATE = BoardState(Common.SIZE)
     }
 
+    protected fun getGameResultByWinner(chess: ChessPieceState): AIEnv.GameResult {
+        return when (chess) {
+            ChessPieceState.CROSS -> AIEnv.GameResult.RESULT_CROSS_WIN
+            ChessPieceState.CIRCLE -> AIEnv.GameResult.RESULT_CIRCLE_WIN
+            else -> throw java.lang.IllegalStateException("$chess is not a valid winner!")
+        }
+    }
 }
 
-class QLearningEnvironmentImpl : AbsEnvironmentImpl() {
+
+class QLearningEnvironmentImpl(name: String, myChess: ChessPieceState, opponentChess: ChessPieceState, qTable: QTable, updateListener: ((index: Int) -> Unit)?)
+    : AbsEnvironmentImpl(name, myChess, opponentChess, qTable, updateListener) {
 
     override val engine: IRLEngine
         get() = QLearningTicTacToeEngine()
 
-    override fun updateByHuman(action: Action): EnvironmentCtrl.GameResult {
-        Log.v(Common.TAG, "HUMAN ===> action=$action")
-        val tempState = currBoardState.mutate(action)
+    override fun updateByOpponent(action: Action): AIEnv.GameResult {
+        val tempState = CURR_BOARD_STATE.mutate(action)
         if (tempState != null) {
-            currBoardState = tempState
-            return when {
-                currBoardState.getWinner() == Common.HUMAN -> EnvironmentCtrl.GameResult.RESULT_HUMAN_WIN
-                currBoardState.isFull() -> EnvironmentCtrl.GameResult.RESULT_DRAW
-                else -> updateByAI()
-            }
-        } else {
-            return EnvironmentCtrl.GameResult.IN_PROGRESS
+            CURR_BOARD_STATE = tempState
+        }
+        return when {
+            CURR_BOARD_STATE.getWinner() == opponentChess -> getGameResultByWinner(opponentChess)
+            CURR_BOARD_STATE.isFull() -> AIEnv.GameResult.RESULT_DRAW
+            else -> updateByMe()
         }
     }
 
-    override fun updateByAI(): EnvironmentCtrl.GameResult {
-        val action = engine.chooseAction(EnvironmentCtrl.qTable, currBoardState)
-        val feedback = engine.getFeedBack(currBoardState, action)
+    override fun updateByMe(): AIEnv.GameResult {
+        val action = engine.chooseAction(qTable, CURR_BOARD_STATE, myChess)
+        val feedback = engine.step(CURR_BOARD_STATE, action)
         // for qlearning or sarsa when AI win
-        engine.doLearning(EnvironmentCtrl.qTable, currBoardState, action, feedback.first, feedback.second, null)
-        currBoardState = feedback.first
-        EnvironmentCtrl.updateListener?.invoke(action.index)
+        engine.doLearning(qTable, CURR_BOARD_STATE, action, feedback.first, feedback.second, null)
+        CURR_BOARD_STATE = feedback.first
+        updateListener?.invoke(action.index)
+        Log.i(TAG, "$name's action = $action")
         return when {
-            currBoardState.getWinner() == Common.AI -> EnvironmentCtrl.GameResult.RESULT_HUMAN_LOSE
-            currBoardState.isFull() -> EnvironmentCtrl.GameResult.RESULT_DRAW
-            else -> EnvironmentCtrl.GameResult.IN_PROGRESS
+            CURR_BOARD_STATE.getWinner() == myChess -> getGameResultByWinner(myChess)
+            CURR_BOARD_STATE.isFull() -> AIEnv.GameResult.RESULT_DRAW
+            else -> AIEnv.GameResult.IN_PROGRESS
         }
     }
 
 }
 
-open class SarsaEnvironmentImpl : AbsEnvironmentImpl() {
+open class SarsaEnvironmentImpl(name: String, myChess: ChessPieceState, opponentChess: ChessPieceState, qTable: QTable, updateListener: ((index: Int) -> Unit)?)
+    : AbsEnvironmentImpl(name, myChess, opponentChess, qTable, updateListener) {
 
     override val engine: IRLEngine
         get() = SarsaTicTacToeEngine()
 
     private var lastStateForSarsa: SarsaTicTacToeEngine.LastLerningState? = null
 
-    override fun updateByHuman(action: Action): EnvironmentCtrl.GameResult {
-        Log.v(Common.TAG, "HUMAN ===> action=$action")
-        val tempState = currBoardState.mutate(action)
+    override fun updateByOpponent(action: Action): AIEnv.GameResult {
+        val tempState = CURR_BOARD_STATE.mutate(action)
         if (tempState != null) {
-            currBoardState = tempState
-            return when {
-                currBoardState.getWinner() == Common.HUMAN -> {
-                    learnForSarsa(null)
-                    EnvironmentCtrl.GameResult.RESULT_HUMAN_WIN
-                }
-                currBoardState.isFull() -> EnvironmentCtrl.GameResult.RESULT_DRAW
-                else -> updateByAI()
+            CURR_BOARD_STATE = tempState
+        }
+        return when {
+            CURR_BOARD_STATE.getWinner() == opponentChess -> {
+                learnForSarsa(null)
+                getGameResultByWinner(opponentChess)
             }
-        } else {
-            return EnvironmentCtrl.GameResult.IN_PROGRESS
+            CURR_BOARD_STATE.isFull() -> AIEnv.GameResult.RESULT_DRAW
+            else -> updateByMe()
         }
     }
 
-    override fun updateByAI(): EnvironmentCtrl.GameResult {
-        val action = engine.chooseAction(EnvironmentCtrl.qTable, currBoardState)
+    override fun updateByMe(): AIEnv.GameResult {
+        val action = engine.chooseAction(qTable, CURR_BOARD_STATE, myChess)
         learnForSarsa(action)
-        val feedback = engine.getFeedBack(currBoardState, action)
+        val feedback = engine.step(CURR_BOARD_STATE, action)
         // remember as last state
-        lastStateForSarsa = SarsaTicTacToeEngine.LastLerningState(currBoardState, action, feedback.first, feedback.second)
+        lastStateForSarsa = SarsaTicTacToeEngine.LastLerningState(CURR_BOARD_STATE, action, feedback.first, feedback.second)
         // for qlearning or sarsa when AI win
-        engine.doLearning(EnvironmentCtrl.qTable, currBoardState, action, feedback.first, feedback.second, null)
-        currBoardState = feedback.first
-        EnvironmentCtrl.updateListener?.invoke(action.index)
+        engine.doLearning(qTable, CURR_BOARD_STATE, action, feedback.first, feedback.second, null)
+        CURR_BOARD_STATE = feedback.first
+        updateListener?.invoke(action.index)
+        Log.i(TAG, "$name's action = $action")
         return when {
-            currBoardState.getWinner() == Common.AI -> EnvironmentCtrl.GameResult.RESULT_HUMAN_LOSE
-            currBoardState.isFull() -> EnvironmentCtrl.GameResult.RESULT_DRAW
-            else -> EnvironmentCtrl.GameResult.IN_PROGRESS
+            CURR_BOARD_STATE.getWinner() == myChess -> getGameResultByWinner(myChess)
+            CURR_BOARD_STATE.isFull() -> AIEnv.GameResult.RESULT_DRAW
+            else -> AIEnv.GameResult.IN_PROGRESS
         }
     }
 
     private fun learnForSarsa(action: Action?) {
         lastStateForSarsa?.apply {
-            engine.doLearning(EnvironmentCtrl.qTable, currState, currAction, nextState, reward, action)
+            engine.doLearning(qTable, currState, currAction, nextState, reward, action)
         }
     }
 
@@ -252,7 +227,8 @@ open class SarsaEnvironmentImpl : AbsEnvironmentImpl() {
 
 }
 
-class SarsaLambdaEnvironmentImpl : SarsaEnvironmentImpl() {
+class SarsaLambdaEnvironmentImpl(name: String, myChess: ChessPieceState, opponentChess: ChessPieceState, qTable: QTable, updateListener: ((index: Int) -> Unit)?)
+    : SarsaEnvironmentImpl(name, myChess, opponentChess, qTable, updateListener) {
 
     override val engine: IRLEngine
         get() = SarsaLambdaTicTacToeEngine()
@@ -262,132 +238,4 @@ class SarsaLambdaEnvironmentImpl : SarsaEnvironmentImpl() {
         (engine as SarsaLambdaTicTacToeEngine).reset()
     }
 
-}
-
-object WinDetector {
-
-    val VERTICAL_STRATEGY = OrthogonalStrategy(0)
-    val HORIZONTAL_STRATEGY = OrthogonalStrategy(1)
-    val DIAGONAL1 = DiagonalStrategy(0)
-    val DIAGONAL2 = DiagonalStrategy(1)
-
-    enum class Direction(val strategy: DetectStrategy) {
-        HORIZONTAL(VERTICAL_STRATEGY),
-        VERTICAL(HORIZONTAL_STRATEGY),
-        DIAGONAL_LEFT_TOP_TO_RIGHT_BOTTOM(DIAGONAL1),
-        DIAGONAL_RIGHT_TOP_LEFT_BOTTOM(DIAGONAL2)
-    }
-
-    fun hasWon(chessboard: BoardState, targetState: ChessPieceState) = Direction.values().any {
-        it.strategy.detectWinner(chessboard, targetState)
-    }
-
-    fun oneMoreStepToWin(chessboard: BoardState, targetState: ChessPieceState) = Direction.values().any {
-        it.strategy.oneMoreStepToWin(chessboard, targetState)
-    }
-
-    fun findBestStep(chessboard: BoardState, targetState: ChessPieceState): Int? {
-        Direction.values().forEach {
-            val step = it.strategy.findBestStep(chessboard, targetState)
-            if (step != null) {
-                return step
-            }
-        }
-        return null
-    }
-
-}
-
-interface DetectStrategy {
-    fun detectWinner(chessboard: BoardState, targetState: ChessPieceState): Boolean
-    fun oneMoreStepToWin(chessboard: BoardState, targetState: ChessPieceState): Boolean
-    fun findBestStep(chessboard: BoardState, targetState: ChessPieceState): Int?
-}
-
-abstract class AbsStrategy : DetectStrategy {
-    override fun detectWinner(chessboard: BoardState, targetState: ChessPieceState): Boolean {
-        return detect(chessboard, targetState, chessboard.size)
-    }
-
-    override fun oneMoreStepToWin(chessboard: BoardState, targetState: ChessPieceState): Boolean {
-        return detect(chessboard, targetState, chessboard.size - 1)
-    }
-
-    override fun findBestStep(chessboard: BoardState, targetState: ChessPieceState): Int? {
-        val resultWrapper = ResultWrapper<Int>()
-        if (detect(chessboard, targetState, chessboard.size - 1, resultWrapper)) {
-            return resultWrapper.result
-        }
-        return null
-    }
-
-    protected abstract fun detect(chessboard: BoardState, targetState: ChessPieceState, expect: Int, detectResult: ResultWrapper<Int>? = null): Boolean
-}
-
-class ResultWrapper<T> {
-    var result: T? = null
-}
-
-/**
- * check if winning in horizontal or vertical direction
- * @param axis 0 means vertical and 1 means horizontal
- */
-class OrthogonalStrategy(private val axis: Int) : AbsStrategy() {
-
-    override fun detect(chessboard: BoardState, targetState: ChessPieceState, expect: Int, detectResult: ResultWrapper<Int>?): Boolean {
-        for (i in 0 until chessboard.size) {
-            var collector = 0
-            var possibleIndex = 0
-            for (j in 0 until chessboard.size) {
-                when (if (axis == 0) chessboard.get(j, i) else chessboard.get(i, j)) {
-                    targetState -> collector++
-                    ChessPieceState.NONE ->
-                        // toVerify is ChessPieceState.NONE
-                        possibleIndex = if (axis == 0) Common.coord2actionIndex(j, i) else Common.coord2actionIndex(i, j)
-                    else -> collector-- // for testing one more step to win
-                }
-            }
-            if (collector == expect) {
-                detectResult?.result = possibleIndex
-                Log.i(Common.TAG, "OrthogonalStrategy detected, axis=$axis state=$targetState expect=$expect")
-                return true
-            }
-        }
-        return false
-    }
-
-}
-
-/**
- * @param direction 0 means left-top to right-bottom
- *                  whereas 1 means right-top to left-bottom
- */
-class DiagonalStrategy(private val direction: Int) : AbsStrategy() {
-
-    override fun detect(chessboard: BoardState, targetState: ChessPieceState, expect: Int, detectResult: ResultWrapper<Int>?): Boolean {
-        var collector = 0
-        var possibleIndex = 0
-        val size = chessboard.size
-        var i = 0
-        var j = if (direction == 0) 0 else size - 1
-        do {
-            when (chessboard.get(i, j)) {
-                targetState -> collector++
-                ChessPieceState.NONE ->
-                    // toVerify is ChessPieceState.NONE
-                    possibleIndex = Common.coord2actionIndex(i, j)
-                else -> collector-- // for testing one more step to win
-            }
-        } while (if (direction == 0) {
-                    ++i < size && ++j < size
-                } else {
-                    ++i < size && --j >= 0
-                })
-        if (collector == expect) {
-            detectResult?.result = possibleIndex
-            Log.i(Common.TAG, "DiagonalStrategy detected, direction=$direction state=$targetState expect=$expect")
-            return true
-        }
-        return false
-    }
 }
