@@ -14,6 +14,11 @@ print(env.observation_space)
 print(env.observation_space.high)
 print(env.observation_space.low)
 
+'''
+This is just a demo showing how DQN should be written.
+NOTE THAT This DQN will not work for CartPole because plain DQN takes a lot of time training,
+and this can hardly meet the requirement of real time feedback.
+'''
 RL = DQN(
     n_actions=env.action_space.n,
     n_features=env.observation_space.shape[0],
