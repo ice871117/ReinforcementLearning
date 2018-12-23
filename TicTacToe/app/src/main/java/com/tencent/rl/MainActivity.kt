@@ -38,7 +38,7 @@ class MainActivity : AppCompatActivity() {
     /**
      * open this comment to utilize SophisticatedPlayer
      */
-//    private val simulatePlayer = SophisticatedPlayer(ChessPieceState.CROSS, aiEnv1, 1000) { index, player ->
+//    private val simulatePlayer = SophisticatedPlayer(ChessPieceState.CROSS, aiEnv1, 100) { index, player ->
 //        adapter.holders[index]?.itemView?.performClick()
 //        if (dialog != null && dialog!!.isShowing) {
 //            dialog!!.dismiss()
@@ -49,7 +49,7 @@ class MainActivity : AppCompatActivity() {
     /**
      * open this comment to utilize AIPlayer, which might employ two reinforcement learning algorithms to train each other.
      */
-    private val simulatePlayer = AIPlayer(ChessPieceState.CROSS, aiEnv1, 1000) { index, player ->
+    private val simulatePlayer = AIPlayer(ChessPieceState.CROSS, aiEnv1, 50) { index, player ->
         adapter.holders[index]?.itemView?.performClick()
         if (dialog != null && dialog!!.isShowing) {
             dialog!!.dismiss()
